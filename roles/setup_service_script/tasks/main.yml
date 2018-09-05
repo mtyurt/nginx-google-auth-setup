@@ -1,0 +1,8 @@
+---
+
+- name: Copy service script
+  copy:
+    src: ./files/service_script
+    dest: /etc/init.d/nginx
+    mode: 0755
+

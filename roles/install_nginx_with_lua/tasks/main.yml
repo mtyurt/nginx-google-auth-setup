@@ -1,0 +1,114 @@
+- name: Install lua & gcc
+  yum:
+    name:
+      - gcc
+      - lua
+      - lua-devel
+      - pcre
+      - pcre-devel
+      - zlib
+      - zlib-devel
+      - gzip
+      - openssl-devel
+      - unzip
+      - tar
+      - make
+      - initscripts
+    state: present
+
+- name: Create nginx directories
+  file:
+    path: "/opt/nginx-source/{{ item }}"
+    state: directory
+  with_items:
+    - nginx-1.12.2
+    - lua-nginx-module-0.10.11
+    - nginx-devel-kit-0.3.0
+    - luajit-source-2.0.5
+
+- name: Download nginx and required software
+  unarchive:
+    src: "{{ item }}"
+    dest: /opt/nginx-source/
+    remote_src: True
+  with_items:
+    - 'http://nginx.org/download/nginx-1.12.2.tar.gz'
+    - 'https://github.com/openresty/lua-nginx-module/archive/v0.10.11.tar.gz'
+    - 'https://github.com/simplresty/ngx_devel_kit/archive/v0.3.0.tar.gz'
+    - 'http://luajit.org/download/LuaJIT-2.0.5.tar.gz'
+    - 'https://www.kyne.com.au/~mark/software/download/lua-cjson-2.1.0.tar.gz'
+    - 'https://github.com/pintsized/lua-resty-http/archive/v0.12.tar.gz'
+
+- name: Build luajit
+  shell: make PREFIX=/opt/nginx-source/luajit-2.0.5 && make install PREFIX=/opt/nginx-source/luajit-2.0.5
+  args:
+    chdir: /opt/nginx-source/LuaJIT-2.0.5
+
+- name: Build lua-cjson
+  shell: make && cp cjson.so /opt/nginx-source/luajit-2.0.5/lib/lua/5.1/
+  args:
+    chdir: /opt/nginx-source/lua-cjson-2.1.0
+
+- name: Copy lua-resty-http to nginx
+  shell: mkdir -p /etc/nginx/lua && cp -aR /opt/nginx-source/lua-resty-http-0.12/lib/resty /etc/nginx/lua/resty
+
+- name: Build nginx
+  shell: |
+    ./configure --prefix=/opt/nginx \
+         --with-ld-opt="-Wl,-rpath,/opt/nginx-source/luajit-2.0.5/lib" \
+         --add-module=/opt/nginx-source/ngx_devel_kit-0.3.0 \
+         --add-module=/opt/nginx-source/lua-nginx-module-0.10.11 \
+         --with-http_ssl_module
+  environment:
+    LUAJIT_LIB: /opt/nginx-source/luajit-2.0.5/lib
+    LUAJIT_INC: /opt/nginx-source/luajit-2.0.5/include/luajit-2.0
+  args:
+    chdir: /opt/nginx-source/nginx-1.12.2
+
+- name: Install nginx
+  shell: make install
+  environment:
+    LUAJIT_LIB: /opt/nginx-source/luajit-2.0.5/lib
+    LUAJIT_INC: /opt/nginx-source/luajit-2.0.5/include/luajit-2.0
+  args:
+    chdir: /opt/nginx-source/nginx-1.12.2
+
+- name: Copy nginx executable to PATH
+  copy:
+    src: /opt/nginx/sbin/nginx
+    dest: /usr/sbin/nginx
+    mode: 0755
+    remote_src: True
+
+- name: Copy default configuration files to /etc/nginx
+  shell: mkdir -p /etc/nginx && cp /opt/nginx/conf/* /etc/nginx/
+  command_warnings: False
+
+- name: Copy nginx.conf to /etc/nginx
+  copy:
+    src: ./files/nginx.conf
+    dest: /etc/nginx/nginx.conf
+
+- name: Create log dir
+  file:
+    path: /var/log/nginx
+    state: directory
+    mode: 0755
+
+- name: Create lua directory for google oauth
+  shell: mkdir -p /etc/nginx/lua/nginx-google-oauth
+
+- name: Copy access.lua file
+  copy:
+    src: ./files/access.lua
+    dest: /etc/nginx/lua/nginx-google-oauth/access.lua
+
+- name: Make lua & related directories executable
+  file:
+    path: "{{ item }}"
+    mode: "u+x,g+x,o+x"
+  with_items:
+    - /etc/nginx
+    - /etc/nginx/lua
+    - /etc/nginx/lua/nginx-google-oauth
+    - /etc/nginx/lua/nginx-google-oauth/access.lua

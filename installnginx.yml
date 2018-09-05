@@ -1,0 +1,11 @@
+---
+
+- name: "Install nginx with lua support"
+  become: True
+  become_method: sudo
+  become_user: root # A lot of operations require root access
+  hosts: localhost # assuming provisioner targets the localhost, for showcase purposes
+  roles:
+    - install_nginx_with_lua
+    - setup_service_script      # we need a service script to manage nginx process
+
